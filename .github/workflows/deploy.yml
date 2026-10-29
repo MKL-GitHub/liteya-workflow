@@ -18,6 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: assemble
+        id: a
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -30,8 +31,28 @@ jobs:
           done
           test -s _site/data.enc && test -s _site/index.html
           touch _site/.nojekyll
+          # Pages keys a deployment by its build version (GITHUB_SHA by default). Every
+          # deploy here runs on the same commit, so a repeat version was acknowledged as
+          # "succeed" but never went live. Make it unique per site content and run.
+          sum=$(sha256sum _site/data.enc | cut -c1-64)
+          echo "sum=$sum" >> "$GITHUB_OUTPUT"
+          echo "build=$(printf '%s %s %s %s' "$GITHUB_SHA" "$sum" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" | sha1sum | cut -c1-40)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
       - id: d
         uses: actions/deploy-pages@v4
+        env:
+          GITHUB_SHA: ${{ steps.a.outputs.build }}
+      - name: live check
+        env:
+          SUM: ${{ steps.a.outputs.sum }}
+        run: |
+          # fail loudly if Pages did not actually serve the new data.enc
+          for i in $(seq 1 24); do
+            got=$(curl -fsS "https://workflow.liteya.ru/data.enc?t=$(date +%s%N)" | sha256sum | cut -c1-64) || got=none
+            if [ "$got" = "$SUM" ]; then echo "live after ${i} tries"; exit 0; fi
+            sleep 5
+          done
+          echo "::error::data.enc on workflow.liteya.ru is not the deployed one after 2 min"
+          exit 1
