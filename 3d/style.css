@@ -137,7 +137,7 @@ input.search:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(56,225,255
 .bar i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;
   background:linear-gradient(90deg,var(--blue),var(--violet) 55%,var(--cyan));
   box-shadow:0 0 12px rgba(140,130,255,.8),0 0 22px rgba(56,225,255,.35);transition:width 1.2s cubic-bezier(.22,.61,.36,1)}
-.bar i.act{background:linear-gradient(90deg,rgba(245,180,255,0),rgba(245,180,255,.55));box-shadow:none}
+.bar i.act{background:linear-gradient(90deg,rgba(240,171,252,.0),rgba(240,171,252,.55));box-shadow:none} /* in-review/in-progress segment: same as the 2D page */
 .caret{color:var(--dim);transition:transform .6s cubic-bezier(.34,1.4,.64,1);display:inline-block}
 .closed>.head .caret{transform:rotate(-90deg)}
 .fold{display:grid;grid-template-rows:1fr;transition:grid-template-rows .7s cubic-bezier(.22,.61,.36,1),opacity .6s}
