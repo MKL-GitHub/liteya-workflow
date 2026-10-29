@@ -1,10 +1,15 @@
 name: deploy
 on:
   workflow_dispatch:
+    inputs:
+      kicked:
+        description: "1 when this run was started by the live check after a stuck deploy"
+        default: "0"
 permissions:
-  contents: read
+  contents: write  # the live check may push one empty commit (new Pages build version)
   pages: write
   id-token: write
+  actions: write   # ...and re-dispatch this workflow on it
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -31,28 +36,37 @@ jobs:
           done
           test -s _site/data.enc && test -s _site/index.html
           touch _site/.nojekyll
-          # Pages keys a deployment by its build version (GITHUB_SHA by default). Every
-          # deploy here runs on the same commit, so a repeat version was acknowledged as
-          # "succeed" but never went live. Make it unique per site content and run.
-          sum=$(sha256sum _site/data.enc | cut -c1-64)
-          echo "sum=$sum" >> "$GITHUB_OUTPUT"
-          echo "build=$(printf '%s %s %s %s' "$GITHUB_SHA" "$sum" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" | sha1sum | cut -c1-40)" >> "$GITHUB_OUTPUT"
+          echo "sum=$(sha256sum _site/data.enc | cut -c1-64)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
       - id: d
         uses: actions/deploy-pages@v4
-        env:
-          GITHUB_SHA: ${{ steps.a.outputs.build }}
       - name: live check
         env:
           SUM: ${{ steps.a.outputs.sum }}
+          KICKED: ${{ inputs.kicked }}
+          GH_TOKEN: ${{ github.token }}
+          SITE: https://workflow.liteya.ru
+          TRIES: "24"
+          WAIT: "5"
         run: |
-          # fail loudly if Pages did not actually serve the new data.enc
-          for i in $(seq 1 24); do
-            got=$(curl -fsS "https://workflow.liteya.ru/data.enc?t=$(date +%s%N)" | sha256sum | cut -c1-64) || got=none
-            if [ "$got" = "$SUM" ]; then echo "live after ${i} tries"; exit 0; fi
-            sleep 5
+          # Pages keys a deployment by pages_build_version = GITHUB_SHA (actions/deploy-pages#383).
+          # Every dispatch runs on the same commit, so Pages may ack "succeed" for the old
+          # deployment and keep serving it. Check what is really served; if it is stale,
+          # push one empty commit (a new build version) and deploy again on it, once.
+          for i in $(seq 1 "$TRIES"); do
+            got=$(curl -fsS "$SITE/data.enc?t=$(date +%s%N)" | sha256sum | cut -c1-64) || got=none
+            if [ "$got" = "$SUM" ]; then echo "live after $i tries"; exit 0; fi
+            sleep "$WAIT"
           done
-          echo "::error::data.enc on workflow.liteya.ru is not the deployed one after 2 min"
-          exit 1
+          if [ "$KICKED" = "1" ]; then
+            echo "::error::data.enc is still stale after a new build version"
+            exit 1
+          fi
+          echo "::warning::Pages kept the old deployment; new build version and redeploy"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -q -m "pages: new build version (stale deploy)"
+          git push -q origin HEAD:main
+          gh workflow run deploy.yml -R "$GITHUB_REPOSITORY" --ref main -f kicked=1
