@@ -23,6 +23,7 @@ jobs:
         run: |
           mkdir -p _site/assets
           cp lw.js CNAME _site/ && cp assets/* _site/assets/ && cp assets/favicon.svg _site/
+          cp -r 3d _site/3d   # 3D version of the dashboard (static; same data.enc)
           for i in 1 2 3 4; do
             gh release download data -p data.enc -p index.html -D _site --clobber -R "$GITHUB_REPOSITORY" && break
             sleep 5
