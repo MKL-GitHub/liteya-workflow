@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 
 export const ROOM = { floor: -640, ceil: 980, back: -1750, side: 1750, front: 1700 };
@@ -12,6 +13,21 @@ export const SPHERE = new THREE.Vector3(0, 545, -760);
 export const SPHERE_SCALE = 0.5;
 
 const add = THREE.AdditiveBlending;
+// GLSL pow is undefined for a negative base: ANGLE on Windows (Direct3D, HLSL pow = exp2(y*log2 x)) returns NaN there.
+// One NaN pixel in the HDR buffer is spread by the bloom blur mips into big pure-black blocks, so squares use sq()
+// and every other pow base is clamped to >= 0. SAFE_GLSL is prepended to every room shader (see Room.mat).
+export const SAFE_GLSL = `float sq(float x){ return x*x; }
+`;
+// last line of defence before the bloom: any non-finite or runaway value becomes the room tone, never black
+const SANITIZE = {
+  uniforms: { tDiffuse: { value: null } },
+  vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+  fragmentShader: `uniform sampler2D tDiffuse; varying vec2 vUv;
+void main(){ vec4 c=texture2D(tDiffuse,vUv);
+  bool bad=any(isnan(c))||any(isinf(c));
+  c=bad?vec4(.004,.004,.014,1.):clamp(c,vec4(0.),vec4(64.));
+  gl_FragColor=vec4(max(c.rgb,vec3(.0028,.0028,.009)),1.); }`
+};
 
 function radialTex(stops, size = 256) {
   const c = document.createElement('canvas'); c.width = c.height = size;
@@ -48,8 +64,8 @@ void main(){
   // the cursor is a soft light that moves across the room
   float dc=distance(vW,uCursor); col+=vec3(.28,.24,.95)*.13*exp(-dc*dc/(2.*460.*460.));
   // neon base strip near the floor
-  if(uKind<1.5){ float b=exp(-pow((vW.y+600.)/14.,2.)); col+=vec3(.35,.30,1.)*b*.45; }
-  gl_FragColor=vec4(col*.32,1.);
+  if(uKind<1.5){ float b=exp(-sq((vW.y+600.)/14.)); col+=vec3(.35,.30,1.)*b*.45; }
+  gl_FragColor=vec4(col*.32+vec3(.0032,.0032,.010),1.);
 }`;
 
 const FLOOR_FS = `uniform float uTime; uniform vec3 uCursor; uniform vec3 uSph; uniform float uRefl;
@@ -64,18 +80,18 @@ void main(){
   float ds=distance(p,uSph.xz); col+=vec3(.20,.18,.95)*.32*exp(-ds*ds/(2.*620.*620.));
   float dc=distance(p,uCursor.xz); col+=vec3(.35,.28,1.)*.10*exp(-dc*dc/(2.*480.*480.));
   float a=mix(.97,.80,uRefl);                // how much of the mirror below shows through
-  gl_FragColor=vec4(col*.32,a);
+  gl_FragColor=vec4(col*.32+vec3(.0030,.0030,.010),a);
 }`;
 
 const SHELL_FS = `uniform float uTime; uniform float uI; varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
 float ln(float x,float w){ float f=fract(x); return 1.-smoothstep(0.,w,min(f,1.-f)); }
 void main(){
-  float fr=pow(1.-abs(dot(vN,vV)),2.0);
+  float fr=sq(clamp(1.-abs(dot(vN,vV)),0.,1.));
   float grid=max(ln(vUv.x*48.+uTime*.012,.05),ln(vUv.y*30.,.06));
   float band=.5+.5*sin(vP.y*.035-uTime*1.1);
   vec3 c1=vec3(.02,.22,1.0),c2=vec3(.05,.55,1.3),c3=vec3(.15,.75,1.5);
   vec3 col=mix(c1,c2,fr);
-  col=col*(fr*1.5+grid*(.10+.55*fr)+.03)+c3*grid*band*.12*(.3+fr)+vec3(.25,.75,1.4)*pow(fr,5.)*1.3;
+  col=col*(fr*1.5+grid*(.10+.55*fr)+.03)+c3*grid*band*.12*(.3+fr)+vec3(.25,.75,1.4)*sq(sq(fr))*fr*1.3;
   gl_FragColor=vec4(col*uI,1.);
 }`;
 const SHELL_VS = `varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
@@ -83,11 +99,11 @@ void main(){ vUv=uv; vP=position; vec4 mv=modelViewMatrix*vec4(position,1.); vN=
 
 const PLAT_FS = `uniform float uTime; varying vec2 vUv;
 void main(){
-  vec2 p=(vUv-.5)*2.; float r=length(p); float a=atan(p.y,p.x);
+  vec2 p=(vUv-.5)*2.; float r=length(p); float a=atan(p.y,p.x+1e-6);
   float rings=0.;
-  for(int i=0;i<6;i++){ float rr=.16+float(i)*.135; rings+=exp(-pow((r-rr)/.0045,2.))*(1.-float(i)*.12); }
-  float ticks=step(.55,fract((a+uTime*.05)*36./6.2832))*exp(-pow((r-.43)/.02,2.))*.7;
-  float dash=step(.5,fract((a-uTime*.08)*12./6.2832))*exp(-pow((r-.71)/.006,2.));
+  for(int i=0;i<6;i++){ float rr=.16+float(i)*.135; rings+=exp(-sq((r-rr)/.0045))*(1.-float(i)*.12); }
+  float ticks=step(.55,fract((a+uTime*.05)*36./6.2832))*exp(-sq((r-.43)/.02))*.7;
+  float dash=step(.5,fract((a-uTime*.08)*12./6.2832))*exp(-sq((r-.71)/.006));
   float core=exp(-r*r/.03)*.5;
   vec3 col=mix(vec3(.15,.75,1.6),vec3(.35,.40,1.6),smoothstep(.1,.9,r));
   float v=(rings+ticks+dash*.9+core)*smoothstep(1.,.6,r);
@@ -96,8 +112,8 @@ void main(){
 
 const BEAM_FS = `uniform float uTime; uniform float uSeed; varying vec2 vUv;
 void main(){
-  float x=1.-abs(vUv.x-.5)*2.; float fl=.55+.45*sin(uTime*(1.3+uSeed*2.)+uSeed*40.);
-  float v=pow(x,3.)*pow(1.-vUv.y,1.6)*fl;
+  float x=clamp(1.-abs(vUv.x-.5)*2.,0.,1.); float fl=.55+.45*sin(uTime*(1.3+uSeed*2.)+uSeed*40.);
+  float v=x*x*x*pow(clamp(1.-vUv.y,0.,1.),1.6)*fl;
   vec3 col=mix(vec3(.3,.8,1.),vec3(.55,.4,1.),uSeed);
   gl_FragColor=vec4(col*v*.65,1.);
 }`;
@@ -106,7 +122,7 @@ const LEM_FS = `uniform float uTime; varying vec2 vUv;
 void main(){
   float t=vUv.x; vec3 a=vec3(.70,.85,1.),b=vec3(1.,1.,1.),c=vec3(.65,.90,1.);
   vec3 col=t<.5?mix(a,b,t*2.):mix(b,c,t*2.-1.);
-  float sweep=exp(-pow(fract(t-uTime*.12)-.5,2.)/.004);
+  float sweep=exp(-sq(fract(t-uTime*.12)-.5)/.004);
   gl_FragColor=vec4(col*(1.15+.7*sweep),1.);
 }`;
 
@@ -116,11 +132,12 @@ void main(){
   vec2 uv=vUv; vec2 c=uv-.5;
   vec2 tuv=.5+c*.92+uPar*.035;                              // parallax: the city sits "behind" the glass
   vec3 img=texture2D(uMap,tuv).rgb;
-  img=pow(img,vec3(1.05))*vec3(.92,.95,1.08);
+  img=pow(max(img,vec3(0.)),vec3(1.05))*vec3(.92,.95,1.08);
+  img=max(img,vec3(.012,.012,.03));                         // the darkest picture pixels stay room-tone, never black
   float scan=.965+.035*sin(vUv.y*uSize.y*1.4+uTime*2.);
   float d=rbox(c*uSize,uSize*.5,22.);
   float inside=1.-smoothstep(-1.5,0.,d);
-  float edge=exp(-pow(d/3.,2.))+.35*exp(-abs(d)/22.);
+  float edge=exp(-sq(d/3.))+.35*exp(-abs(d)/22.);
   vec3 ec=mix(vec3(.36,.48,1.),vec3(.72,.45,1.),vUv.y)+vec3(.2,.6,.7)*smoothstep(.6,1.,vUv.x);
   vec3 col=img*scan*inside*.80+ec*edge*(.75+.7*uGlow);
   float a=max(inside,edge*.9);
@@ -181,16 +198,16 @@ export class Room {
     // alpha:true + an opaque clear: the canvas is never promoted to a GPU overlay/underlay (Chrome/Windows DirectComposition
     // punches black rectangles through underlays when 3D-transformed HTML moves on top of them)
     const r = this.renderer = new THREE.WebGLRenderer({ antialias: this.q >= 2, powerPreference: 'high-performance', alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false });
-    r.setClearColor(0x02020c, 1); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
+    r.setClearColor(0x0c0d2a, 1); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     host.appendChild(r.domElement);
-    this.scene = new THREE.Scene(); this.scene.fog = new THREE.FogExp2(0x03041a, 0.00011);
+    this.scene = new THREE.Scene(); this.scene.fog = new THREE.FogExp2(0x0a0b26, 0.00011);
     this.t = 0; this.cursor = new THREE.Vector3(0, 0, -900);
     this.uScale = { value: 900 };
     this.U = []; // materials with uTime
     this.build();
   }
   mat(fs, vs, uniforms, extra = {}) {
-    const m = new THREE.ShaderMaterial(Object.assign({ vertexShader: vs || WALL_VS, fragmentShader: fs, uniforms: Object.assign({ uTime: { value: 0 } }, uniforms) }, extra));
+    const m = new THREE.ShaderMaterial(Object.assign({ vertexShader: vs || WALL_VS, fragmentShader: SAFE_GLSL + fs, uniforms: Object.assign({ uTime: { value: 0 } }, uniforms) }, extra));
     this.U.push(m); return m;
   }
   build() {
@@ -330,6 +347,7 @@ export class Room {
     if (this.q >= 1) {
       this.composer = new EffectComposer(r);
       this.composer.addPass(new RenderPass(this.scene, camera));
+      this.composer.addPass(new ShaderPass(SANITIZE));
       this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), this.q >= 2 ? .6 : .5, .3, .7);
       this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
     }
