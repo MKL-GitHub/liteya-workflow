@@ -8,7 +8,9 @@ const RM = matchMedia('(prefers-reduced-motion: reduce)').matches || qs.has('sti
 const hasGL = (() => { try { const c = document.createElement('canvas'); return !!(window.WebGLRenderingContext && (c.getContext('webgl2') || c.getContext('webgl'))); } catch (e) { return false; } })();
 let Q = !hasGL ? 0 : ((navigator.hardwareConcurrency || 4) <= 4 || (navigator.deviceMemory || 8) <= 4 || /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) ? 1 : 2;
 if (qs.get('q') === 'low') Q = Math.min(Q, 1); if (qs.get('q') === 'high' && hasGL) Q = 2; if (qs.get('q') === 'none') Q = 0;
-const dprFor = q => Math.min(window.devicePixelRatio || 1, q >= 2 ? 1.5 : 1);
+// the canvas resolution is fixed once at start: changing DPR/size at runtime reallocates the GL canvas (black frames)
+const DPR0 = Math.min(window.devicePixelRatio || 1, Q >= 2 ? 1.5 : 1);
+const dprFor = () => DPR0;
 if (!Q) document.body.classList.add('nogl');
 
 /* ---------------- data semantics (ported from the 2D page) ---------------- */
@@ -79,7 +81,7 @@ function panel(id, cls, html, opt = {}) {
   const rec = P[id] = { id, el, obj, base: { x: 0, y: 0, z: 0, rx: 0, ry: 0, w: 300, h: 100 }, tx: sp(), ty: sp(), lift: sp(), glow: sp(), intro: sp(), gl: -1, hover: false, i: Object.keys(P).length, show: opt.show ?? 1, still: !!opt.still };
   el.addEventListener('pointerenter', () => { rec.hover = true; if (id === 'win' && room) room.winHover = true; });
   el.addEventListener('pointerleave', () => { rec.hover = false; if (id === 'win' && room) room.winHover = false; });
-  el.addEventListener('pointermove', e => { const r = el.getBoundingClientRect(); el.style.setProperty('--mx', ((e.clientX - r.left) / r.width * 100).toFixed(1) + '%'); el.style.setProperty('--my', ((e.clientY - r.top) / r.height * 100).toFixed(1) + '%'); });
+  el.addEventListener('pointermove', e => { rec.pe = e; });
   return rec;
 }
 function sp(v = 0) { return { v, vel: 0 }; }
@@ -119,8 +121,8 @@ function layout(W, H) {
     HW = 968; HH = 528;
     L.hdr = [-560, 470, 0, 0, 0, 760, 80]; L.live = [672, 474, 0, 0, 0, 470, 46];
     [-700, -428, 428, 700].forEach((x, i) => L['t' + (i + 1)] = [x, 372, 0, 0, 0, 256, 88]);
-    L.tb = [0, 250, 0, 0, 0, 880, 54];
-    L.pr = [0, -84, 0, 0, 0, 880, 578];
+    L.tb = [0, 262, 0, 0, 0, 880, 54];
+    L.pr = [0, -92, 0, 0, 0, 880, 560];   // top edge at y=188, 47px below the filters bar (bottom 235)
     L.ag = [-738, 118, -80, 0, .34, 396, 292];
     L.bt = [-738, -210, -80, 0, .34, 396, 292];
     L.win = [738, -46, -80, 0, -.34, 420, 620];
@@ -313,7 +315,7 @@ const scroller = {
 };
 
 /* ---------------- scene, camera, loop ---------------- */
-let room = null, front = null, camera, cssR, W = innerWidth, H = innerHeight, D = 1300;
+let room = null, camera, cssR, W = innerWidth, H = innerHeight, D = 1300;
 const FOV = 40, ptr = { x: 0, y: 0, sx: 0, sy: 0, px: W / 2, py: H / 2, moved: false };
 let pageScroll = { cur: 0, target: 0 };
 const scrollMaxCam = () => Math.max(0, scrollMax - 2 * D * Math.tan(THREE.MathUtils.degToRad(FOV / 2)) + 60);
@@ -323,7 +325,7 @@ function fit() {
   D = MODE === 'wide' ? Math.max(HH / t, HW / (t * a)) : HW / (t * a);
   camera.aspect = a; camera.near = 10; camera.far = 9000; camera.updateProjectionMatrix();
   cssR.setSize(W, H);
-  if (room) room.resize(W, H, dprFor(Q)); if (front) front.resize(W, H, window.devicePixelRatio || 1);
+  if (room && (room._w !== W || room._h !== H)) { room._w = W; room._h = H; room.resize(W, H, dprFor(Q)); }
 }
 addEventListener('pointermove', e => { ptr.px = e.clientX; ptr.py = e.clientY; ptr.x = e.clientX / W * 2 - 1; ptr.y = -(e.clientY / H * 2 - 1);
   if (!ptr.moved) { ptr.moved = true; setTimeout(() => document.body.classList.add('hinted'), 5000); } }, { passive: true });
@@ -339,11 +341,10 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202610291437').then(mod => {
+      import('./scene.js?v=202610291450').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
-        if (Q >= 2 && !RM) { front = new mod.FrontPetals($("fx"), 14); }
         fit(); window.__room = room;
       }).catch(err => { console.warn('3D room unavailable, panels only', err); document.body.classList.add('nogl'); });
     } catch (e) { document.body.classList.add('nogl'); }
@@ -356,8 +357,9 @@ function init() {
     const dt = Math.min(0.05, (now - last) / 1000); last = now; const t = (now - t0) / 1000;
     // fps governor: step quality down softly if the device can't keep up
     acc += dt; frames++; if (acc >= 2) { const fps = frames / acc; window.__fps = fps; acc = 0; frames = 0;
-      if (room && t > 4) { if (fps < 42) slow++; else slow = 0;
-        if (slow >= 2 && Q > 0) { Q--; slow = 0; room.degrade(Q); if (front && Q < 2) { front = null; $("fx").style.display = 'none'; } room.resize(W, H, dprFor(Q)); console.info('quality ->', Q); } } }
+      // only effects are switched off (mirror, then bloom); canvas size and DPR never change here
+      if (room && t > 8) { if (fps < 40) slow++; else slow = 0;
+        if (slow >= 3 && Q > 0) { Q--; slow = 0; room.degrade(Q); console.info('quality ->', Q); } } }
     // pointer smoothing (soft, never jerky)
     const k = 1 - Math.exp(-dt * (RM ? 2 : 3.2)); ptr.sx += (ptr.x - ptr.sx) * k; ptr.sy += (ptr.y - ptr.sy) * k;
     const amp = RM ? .25 : 1;
@@ -373,6 +375,8 @@ function init() {
       const delay = .25 + r.i * .07, introT = RM ? 1 : (t > delay ? 1 : 0); spring(r.intro, introT, dt, 26, 9.5);
       v.set(b.x, b.y, b.z).project(camera); const cx = (v.x + 1) / 2 * W, cy = (1 - v.y) / 2 * H;
       const dx = Math.max(-1.3, Math.min(1.3, (ptr.px - cx) / (W * .5))), dy = Math.max(-1.3, Math.min(1.3, (ptr.py - cy) / (H * .5)));
+      if (r.hover && r.pe) { const e = r.pe, rr = r.el.getBoundingClientRect(); r.pe = null;
+        r.el.style.setProperty('--mx', ((e.clientX - rr.left) / rr.width * 100).toFixed(0) + '%'); r.el.style.setProperty('--my', ((e.clientY - rr.top) / rr.height * 100).toFixed(0) + '%'); }
       const hv = r.hover ? 1 : 0, ta = (id === 'pr' ? .045 : .09) * (1 + hv * .5) * amp;
       spring(r.ty, dx * ta, dt); spring(r.tx, dy * ta * .8, dt); spring(r.lift, hv * (id === 'pr' ? 14 : 34) * (RM ? .4 : 1), dt, 60, 11);
       const gt = (selId && id === 'dt') ? .6 : hv; const g = spring(r.glow, gt, dt, 40, 11);
@@ -391,10 +395,10 @@ function init() {
     scroller.tick(dt);
     if (room) { room.scene.position.y = MODE === 'tall' ? baseY - 6 : 0; room.cursor.set(ptr.sx * 1500, ptr.sy * 700 + 80, -1200 + Math.abs(ptr.sx) * 300); room.update(dt, { x: ptr.sx, y: ptr.sy }, any); room.render(); }
     cssR.render(cssScene, camera);
-    if (front) front.render(camera, t);
   };
   requestAnimationFrame(loop);
   setTimeout(() => document.body.classList.add('ready'), 120);
+  setTimeout(() => { const v = $('veil'); if (v) v.remove(); }, 2600); // drop the full-screen fade layer once it's done
   poll(); setInterval(() => { if (document.visibilityState === "visible") poll(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') poll(); });
 }

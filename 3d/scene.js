@@ -70,12 +70,12 @@ void main(){
 const SHELL_FS = `uniform float uTime; uniform float uI; varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
 float ln(float x,float w){ float f=fract(x); return 1.-smoothstep(0.,w,min(f,1.-f)); }
 void main(){
-  float fr=pow(1.-abs(dot(vN,vV)),2.3);
-  float grid=max(ln(vUv.x*32.+uTime*.015,.035),ln(vUv.y*20.,.04));
+  float fr=pow(1.-abs(dot(vN,vV)),2.0);
+  float grid=max(ln(vUv.x*48.+uTime*.012,.05),ln(vUv.y*30.,.06));
   float band=.5+.5*sin(vP.y*.035-uTime*1.1);
-  vec3 c1=vec3(.22,.32,1.),c2=vec3(.62,.30,1.),c3=vec3(.25,.85,1.);
-  vec3 col=mix(c1,c2,.5+.5*vN.y);
-  col=col*(fr*1.75+grid*(.10+.45*fr)+.035)+c3*grid*band*.18*(.3+fr);
+  vec3 c1=vec3(.02,.22,1.0),c2=vec3(.05,.55,1.3),c3=vec3(.15,.75,1.5);
+  vec3 col=mix(c1,c2,fr);
+  col=col*(fr*1.5+grid*(.10+.55*fr)+.03)+c3*grid*band*.12*(.3+fr)+vec3(.25,.75,1.4)*pow(fr,5.)*1.3;
   gl_FragColor=vec4(col*uI,1.);
 }`;
 const SHELL_VS = `varying vec3 vN; varying vec3 vV; varying vec2 vUv; varying vec3 vP;
@@ -89,7 +89,7 @@ void main(){
   float ticks=step(.55,fract((a+uTime*.05)*36./6.2832))*exp(-pow((r-.43)/.02,2.))*.7;
   float dash=step(.5,fract((a-uTime*.08)*12./6.2832))*exp(-pow((r-.71)/.006,2.));
   float core=exp(-r*r/.03)*.5;
-  vec3 col=mix(vec3(.25,.85,1.),vec3(.55,.35,1.),smoothstep(.1,.9,r));
+  vec3 col=mix(vec3(.15,.75,1.6),vec3(.35,.40,1.6),smoothstep(.1,.9,r));
   float v=(rings+ticks+dash*.9+core)*smoothstep(1.,.6,r);
   gl_FragColor=vec4(col*v*.8,1.);
 }`;
@@ -104,10 +104,10 @@ void main(){
 
 const LEM_FS = `uniform float uTime; varying vec2 vUv;
 void main(){
-  float t=vUv.x; vec3 a=vec3(.30,.45,1.),b=vec3(.75,.45,1.),c=vec3(.35,.95,1.);
+  float t=vUv.x; vec3 a=vec3(.70,.85,1.),b=vec3(1.,1.,1.),c=vec3(.65,.90,1.);
   vec3 col=t<.5?mix(a,b,t*2.):mix(b,c,t*2.-1.);
   float sweep=exp(-pow(fract(t-uTime*.12)-.5,2.)/.004);
-  gl_FragColor=vec4(col*(1.9+1.6*sweep),1.);
+  gl_FragColor=vec4(col*(1.15+.7*sweep),1.);
 }`;
 
 const WIN_FS = `uniform sampler2D uMap; uniform vec2 uPar; uniform float uTime; uniform float uGlow; uniform vec2 uSize; varying vec2 vUv;
@@ -178,7 +178,9 @@ function makePetals(n, min, box, scaleRef) {
 export class Room {
   constructor(host, opts) {
     this.q = opts.quality; this.rm = opts.reducedMotion;
-    const r = this.renderer = new THREE.WebGLRenderer({ antialias: this.q >= 2, powerPreference: 'high-performance', alpha: false });
+    // alpha:true + an opaque clear: the canvas is never promoted to a GPU overlay/underlay (Chrome/Windows DirectComposition
+    // punches black rectangles through underlays when 3D-transformed HTML moves on top of them)
+    const r = this.renderer = new THREE.WebGLRenderer({ antialias: this.q >= 2, powerPreference: 'high-performance', alpha: true, premultipliedAlpha: true, preserveDrawingBuffer: false });
     r.setClearColor(0x02020c, 1); r.toneMapping = THREE.ACESFilmicToneMapping; r.toneMappingExposure = 1.0;
     host.appendChild(r.domElement);
     this.scene = new THREE.Scene(); this.scene.fog = new THREE.FogExp2(0x03041a, 0.00011);
@@ -225,15 +227,18 @@ export class Room {
   buildSphere() {
     const S = this.scene, g = this.sph = new THREE.Group(); g.position.copy(SPHERE); g.scale.setScalar(SPHERE_SCALE); S.add(g);
     const Rr = 330;
-    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(120,130,255,0.40)'], [.25, 'rgba(100,80,255,0.14)'], [.6, 'rgba(60,40,200,0.03)'], [1, 'rgba(0,0,0,0)']]), blending: add, depthWrite: false, transparent: true }));
-    halo.scale.set(Rr * 3.8, Rr * 3.8, 1); g.add(halo); this.halo = halo;
+    const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(30,110,255,0.32)'], [.25, 'rgba(20,80,255,0.13)'], [.6, 'rgba(20,40,200,0.03)'], [1, 'rgba(0,0,0,0)']]), blending: add, depthWrite: false, transparent: true }));
+    halo.scale.set(Rr * 3.8, Rr * 3.8, 1); halo.position.z = -Rr * 1.15; g.add(halo); this.halo = halo;
     this.shellM = this.mat(SHELL_FS, SHELL_VS, { uI: { value: 1 } }, { transparent: true, blending: add, depthWrite: false });
     const shell = new THREE.Mesh(new THREE.SphereGeometry(Rr, this.q >= 2 ? 96 : 48, this.q >= 2 ? 64 : 32), this.shellM);
     g.add(shell); this.shell = shell;
-    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(120,150,255,0.55)'], [.18, 'rgba(70,90,255,0.25)'], [.5, 'rgba(70,50,230,0.06)'], [1, 'rgba(0,0,0,0)']]), blending: add, depthWrite: false, transparent: true }));
-    core.scale.set(Rr * 1.5, Rr * 1.5, 1); g.add(core);
+    // deep-blue body behind the glowing layers, so the white logo and text read clearly
+    const body = new THREE.Mesh(new THREE.SphereGeometry(Rr * .965, 64, 48), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.004, 0.018, 0.10), transparent: true, opacity: .82, depthWrite: false, side: THREE.BackSide }));
+    body.renderOrder = -1; g.add(body);
+    const core = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(20,80,255,0.22)'], [.3, 'rgba(10,50,200,0.10)'], [.6, 'rgba(10,30,160,0.03)'], [1, 'rgba(0,0,0,0)']]), blending: add, depthWrite: false, transparent: true }));
+    core.scale.set(Rr * 1.5, Rr * 1.5, 1); core.position.z = -Rr * 1.1; g.add(core);
     // point shell
-    { const n = this.q >= 2 ? 2600 : 1100, pos = new Float32Array(n * 3), sd = new Float32Array(n);
+    { const n = this.q >= 2 ? 1400 : 700, pos = new Float32Array(n * 3), sd = new Float32Array(n);
       for (let i = 0; i < n; i++) { const u = Math.random() * 2 - 1, th = Math.random() * Math.PI * 2, rr = Rr * (1.0 + Math.pow(Math.random(), 3) * .35), s = Math.sqrt(1 - u * u);
         pos.set([rr * s * Math.cos(th), rr * u, rr * s * Math.sin(th)], i * 3); sd[i] = Math.random(); }
       const geo = new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('aSeed', new THREE.BufferAttribute(sd, 1));
@@ -244,14 +249,15 @@ export class Room {
         return o.set(a * c / d * 1.15, a * s * c / d * 1.05, 26 * Math.sin(u)); } }
       const tube = new THREE.Mesh(new THREE.TubeGeometry(new Lem(), 400, 10, 16, true), this.mat(LEM_FS, `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`, {}));
       this.logo = new THREE.Group(); this.logo.add(tube); this.logo.position.y = 30; g.add(this.logo);
-      const txt = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTex('Liteya', 1024, 256, '600 150px system-ui,"Segoe UI",Roboto,sans-serif', 'rgba(140,160,255,1)'), transparent: true, depthWrite: false, blending: add }));
-      txt.scale.set(300, 75, 1); txt.position.set(0, -92, 20); this.logoText = txt; g.add(txt); }
+      const txt = new THREE.Sprite(new THREE.SpriteMaterial({ map: textTex('Liteya', 1024, 256, '650 160px system-ui,"Segoe UI",Roboto,sans-serif', 'rgba(120,190,255,.9)'), transparent: true, depthWrite: false }));
+      txt.scale.set(380, 95, 1); txt.position.set(0, -104, 60); txt.renderOrder = 10; this.logoText = txt; g.add(txt); }
     // orbital rings
     this.rings = [];
-    const ringDefs = [[1.38, 1.8, [0.45, 0.55, 1.8], 1.30, 0.0, .05], [1.55, 1.2, [0.75, 0.45, 1.8], 1.18, 0.5, -.035], [1.75, 1.0, [0.35, 1.2, 1.7], 1.42, -0.35, .025], [2.15, 0.8, [0.5, 0.45, 1.5], 1.50, 0.15, -.015], [2.95, 1.4, [0.40, 0.55, 1.6], 1.47, -0.05, .01]];
+    const ringDefs = [[1.32, 4.0, [0.05, 0.45, 1.5], 1.36, 0.10, .05], [1.48, 3.0, [0.50, 0.15, 1.5], 1.22, 0.42, -.035], [1.66, 3.2, [0.05, 0.65, 1.4], 1.44, -0.30, .025],
+      [1.95, 2.4, [0.40, 0.20, 1.4], 1.50, 0.18, -.015], [2.30, 2.6, [0.05, 0.40, 1.4], 1.40, -0.12, .02], [2.95, 2.2, [0.30, 0.25, 1.3], 1.47, -0.05, .01]];
     for (const [rad, tube, col, tx, tz, sp] of ringDefs) {
-      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(...col), transparent: true, opacity: .75, blending: add, depthWrite: false });
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(Rr * rad, tube, 6, 320), m);
+      const m = new THREE.MeshBasicMaterial({ color: new THREE.Color(...col), transparent: true, opacity: 1, blending: add, depthWrite: false });
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(Rr * rad, tube, 8, 360), m);
       const piv = new THREE.Group(); piv.rotation.set(tx, 0, tz); piv.add(ring); g.add(piv);
       // a bright bead travelling on the ring
       const bead = new THREE.Sprite(new THREE.SpriteMaterial({ map: radialTex([[0, 'rgba(255,255,255,1)'], [.3, 'rgba(150,170,255,.6)'], [1, 'rgba(0,0,0,0)']]), blending: add, depthWrite: false, transparent: true }));
@@ -263,6 +269,23 @@ export class Room {
       `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`, {}, { transparent: true, blending: add, depthWrite: false, side: THREE.DoubleSide });
       const geo = new THREE.CylinderGeometry(Rr * 2.55, Rr * 2.55, 6, 256, 1, true);
       const band = new THREE.Mesh(geo, m); band.rotation.x = 0.08; g.add(band); this.band = band; }
+    { const ico = new THREE.IcosahedronGeometry(Rr * .985, 3), edges = new THREE.EdgesGeometry(ico, 1);
+      this.net = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: new THREE.Color(0.05, 0.40, 1.3), transparent: true, opacity: .5, blending: add, depthWrite: false }));
+      g.add(this.net);
+      const nodes = new THREE.Points(ico, new THREE.PointsMaterial({ color: new THREE.Color(0.35, 0.75, 1.6), size: 6, sizeAttenuation: true, transparent: true, opacity: .9, blending: add, depthWrite: false, map: radialTex([[0, 'rgba(255,255,255,1)'], [.4, 'rgba(160,210,255,.5)'], [1, 'rgba(0,0,0,0)']], 64) }));
+      this.net.add(nodes); }
+    { const streakFS = `uniform float uTime; uniform float uSeed; varying vec2 vUv;
+        void main(){ float x=1.-abs(vUv.x-.5)*2.; float run=fract(vUv.y*3.-uTime*(.25+uSeed*.4)+uSeed*7.);
+          float dash=smoothstep(.0,.08,run)*smoothstep(.55,.25,run);
+          float v=x*x*(.25+.75*dash)*smoothstep(1.,.2,vUv.y)*smoothstep(0.,.15,vUv.y);
+          gl_FragColor=vec4(vec3(.06,.45,1.4)*v*(.5+.5*uSeed),1.); }`;
+      const vs = `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`;
+      const n = this.q >= 2 ? 46 : 22;
+      for (let i = 0; i < n; i++) { const sd = Math.random(), h = 300 + Math.random() * 700;
+        const st = new THREE.Mesh(new THREE.PlaneGeometry(3 + Math.random() * 5, h), this.mat(streakFS, vs, { uSeed: { value: sd } }, { transparent: true, blending: add, depthWrite: false }));
+        st.position.set((Math.random() - .5) * Rr * 3.2, Rr * .55 + h / 2, (Math.random() - .5) * Rr * .8); g.add(st); } }
+    { const disc = new THREE.Mesh(new THREE.PlaneGeometry(Rr * 4.6, Rr * 4.6), this.mat(PLAT_FS, `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`, {}, { transparent: true, blending: add, depthWrite: false }));
+      disc.rotation.x = -Math.PI / 2; disc.position.y = -Rr * 1.22; disc.scale.setScalar(1); g.add(disc); }
     // floor platform + beams
     const plat = new THREE.Mesh(new THREE.PlaneGeometry(1900, 1900), this.mat(PLAT_FS, `varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`, {}, { transparent: true, blending: add, depthWrite: false }));
     plat.rotation.x = -Math.PI / 2; plat.position.set(SPHERE.x, ROOM.floor + 2, SPHERE.z); plat.renderOrder = 2; this.scene.add(plat);
@@ -307,7 +330,7 @@ export class Room {
     if (this.q >= 1) {
       this.composer = new EffectComposer(r);
       this.composer.addPass(new RenderPass(this.scene, camera));
-      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), this.q >= 2 ? .8 : .7, .38, .62);
+      this.bloom = new UnrealBloomPass(new THREE.Vector2(w, h), this.q >= 2 ? .6 : .5, .3, .7);
       this.composer.addPass(this.bloom); this.composer.addPass(new OutputPass());
     }
     this.resize(w, h, dpr);
@@ -330,10 +353,10 @@ export class Room {
     const s = this.sph;
     s.rotation.y += (ptr.x * .35 - s.rotation.y) * Math.min(1, dt * 1.6);
     s.rotation.x += (-ptr.y * .18 - s.rotation.x) * Math.min(1, dt * 1.6);
-    this.shell.rotation.y += dt * .05 * sp; this.shellPts.rotation.y -= dt * .03 * sp;
+    this.shell.rotation.y += dt * .05 * sp; this.shellPts.rotation.y -= dt * .03 * sp; this.net.rotation.y += dt * .035 * sp; this.net.rotation.x = Math.sin(t * .1) * .1;
     this.logo.position.y = 30 + Math.sin(t * .8) * 8 * sp; this.logo.rotation.y = Math.sin(t * .35) * .25 * sp - s.rotation.y * .6;
     this.logoText.material.opacity = .85 + .15 * Math.sin(t * 1.3);
-    this.shellM.uniforms.uI.value = .62 + .18 * react;
+    this.shellM.uniforms.uI.value = .85 + .15 * react;
     for (const r of this.rings) {
       r.ring.rotation.z += dt * r.sp * sp * 2.2;
       const a = t * r.sp * 9 * sp; r.bead.position.set(Math.cos(a) * r.bead.userData.r, Math.sin(a) * r.bead.userData.r, 0);
@@ -348,6 +371,10 @@ export class Room {
   render() {
     if (this.mirror && this.mirror.visible) { /* Reflector renders itself in onBeforeRender */ }
     if (this.composer) this.composer.render(); else this.renderer.render(this.scene, this.camera);
+    // force alpha = 1 on the visible canvas so it is fully opaque (the floor/beams blend alpha < 1)
+    const r = this.renderer, gl = r.getContext(); r.setRenderTarget(null);
+    gl.colorMask(false, false, false, true); gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT); gl.colorMask(true, true, true, true);
+    r.resetState();
   }
 }
 
