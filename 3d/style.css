@@ -161,8 +161,8 @@ input.search:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(56,225,255
 .card .id{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .meta{display:flex;gap:6px;align-items:center}
-.card.done{opacity:.6}
-.card.done .t{text-decoration:line-through;text-decoration-color:rgba(167,139,250,.5)}
+.card.done{opacity:.82}
+.card.done .t{color:var(--muted);text-decoration-line:line-through;text-decoration-thickness:2px;text-decoration-color:#c4b5fd;text-shadow:0 0 6px rgba(34,211,238,.45),0 0 2px rgba(167,139,250,.6)}
 .card.done .ic{border-color:var(--ok);background:rgba(62,230,168,.16);color:var(--ok);box-shadow:0 0 8px rgba(62,230,168,.4)}
 .card.run .ic{border-color:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:pulse 1.8s ease-in-out infinite}
 .card.verify .ic,.card.review .ic{border-color:var(--pink);box-shadow:0 0 8px rgba(245,180,255,.6)}
