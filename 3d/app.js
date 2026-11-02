@@ -240,8 +240,9 @@ function countTo(id, text) { // numbers roll softly to their new value
 function render() {
   const cs = state.cards;
   countTo("sDone", `${cs.filter(c => c.status === "done").length} / ${cs.length}`);
-  countTo("sWork", String(cs.filter(c => c.status === "running").length));
-  countTo("sVerify", String(cs.filter(c => ["verify", "review"].includes(c.status)).length));
+  const n = state.counts || {}; // server: live bots/agents + card statuses, each once
+  countTo("sWork", String(n.work ?? cs.filter(c => c.status === "running").length));
+  countTo("sVerify", String(n.verify ?? cs.filter(c => ["verify", "review"].includes(c.status)).length));
   const a = state.agents || {}; countTo("sToday", `${a.today ?? "—"}`);
   const ctl = state.control === "RUN" ? "работает" : state.control === "PAUSE" ? "на паузе" : state.control;
   $("sub").innerHTML = `оркестратор <b style="color:${state.control === "RUN" ? "var(--ok)" : "var(--warn)"}">${esc(String(ctl).split(/\n+/).join(" · "))}</b> · ${esc(state.repo)}`;
@@ -256,7 +257,7 @@ function setLive(ok, text) { $("dot").className = "dot " + (ok ? "on" : "off"); 
 function apply(s) {
   const keepQ = document.activeElement && document.activeElement.id === "q"; state = s; window.__state = s; render();
   if (keepQ) { const qi = $("q"); qi.focus(); qi.setSelectionRange(q.length, q.length); }
-  setLive(true, "обновлено " + new Date().toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }) + " МСК");
+  setLive(true, "данные " + new Date(state.generated_at || Date.now()).toLocaleTimeString("ru-RU", { timeZone: "Europe/Moscow", hour: "2-digit", minute: "2-digit" }) + " МСК");
 }
 async function poll() { try { const r = await fetch("/api/state", { cache: "no-store" }); if (r.ok) apply(await r.json()); } catch (e) { setLive(false, "нет связи"); } }
 
@@ -341,7 +342,7 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202610291639').then(mod => {
+      import('./scene.js?v=202611021717').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
