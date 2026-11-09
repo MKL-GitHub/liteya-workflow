@@ -104,6 +104,8 @@ function buildPanels() {
   panel('t4', 'tile c2', `${ico('work')}<div><b id="sWork">—</b><span>в работе</span></div>`);
   panel('ag', 'crew ag', `<h3>${ico('agents')}<span>Агенты</span><b id="cAgents">—</b><span class="st" id="cAgSt"></span></h3><div class="lst" id="cAgList"></div>`);
   panel('bt', 'crew bt', `<h3>${ico('bots')}<span>Боты</span><b id="cBots">—</b><span class="st" id="cBtSt"></span></h3><div class="lst" id="cBtList"></div>`);
+  for (const l of [P.ag.el, P.bt.el].map(e => e.querySelector('.lst'))) // scroll the list, not the camera
+    l.addEventListener('wheel', e => { if (l.scrollHeight > l.clientHeight) e.stopPropagation(); }, { passive: true });
   panel('tb', 'toolbar', `<div id="toolbar" style="display:contents"></div>`);
   panel('pr', 'projects', `<div class="err" id="err" style="display:none"></div><div class="scroll" id="sc"><div class="inner" id="tree"><div class="empty">загрузка…</div></div><div class="sbar" id="sbar"></div></div>`);
   panel('ft', 'foot', `<div id="foot" style="display:contents">…</div>`);
@@ -219,6 +221,8 @@ function wkHtml(w, isAgent) {
     w.started_at && `<span>с ${esc(msk(w.started_at))}</span>`, src && `<span>${src}</span>`, w.stale && `<span style="color:var(--warn)">нет обновлений &gt;${state.workers.stale_hours} ч</span>`].filter(Boolean).join("");
   return `<div class="wk ${w.stale ? "stale" : ""}" title="${esc(w.id)}"><span class="pip"></span><span class="nm">${title}</span><div class="ln">${ln}</div>${w.task ? `<div class="tk" title="${esc(w.task)}">${esc(w.task)}</div>` : ""}</div>`;
 }
+// «Агенты» / «Боты»: at most 5 rows visible, the rest scrolls inside the panel
+function cap5(el) { const r = el.children; el.style.maxHeight = r.length > 5 && r[4].offsetHeight ? `${r[4].offsetTop + r[4].offsetHeight}px` : ""; }
 function renderCrew() {
   const w = state.workers; if (!w) return; const stale = l => l.filter(x => x.stale).length;
   $("cAgents").textContent = w.agents_active; $("cBots").textContent = w.bots_active;
@@ -226,6 +230,7 @@ function renderCrew() {
   $("cBtSt").textContent = stale(w.bots) ? `+${stale(w.bots)} без обновлений` : "работают сейчас";
   $("cAgList").innerHTML = w.agents.map(x => wkHtml(x, true)).join("") || '<div class="none">сейчас никто не работает</div>';
   $("cBtList").innerHTML = w.bots.map(x => wkHtml(x, false)).join("") || '<div class="none">сейчас никто не работает</div>';
+  cap5($("cAgList")); cap5($("cBtList"));
 }
 const counters = {};
 function countTo(id, text) { // numbers roll softly to their new value
@@ -342,7 +347,7 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202611021717').then(mod => {
+      import('./scene.js?v=202611091203').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
