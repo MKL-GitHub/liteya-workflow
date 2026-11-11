@@ -1,11 +1,6 @@
 /* liteya · 3D dashboard. Panels are HTML (crisp text) placed in a three.js room via CSS3DRenderer. */
-:root{
-  --bg:#03041a; --text:#f1f0ff; --muted:#b9b8e2; --dim:#8f8ebd;
-  --blue:#5b7cff; --violet:#a78bfa; --violet2:#7c3aed; --cyan:#38e1ff; --pink:#f5b4ff; --sakura:#ffb7d9;
-  --ok:#3ee6a8; --warn:#fbbf24; --bad:#fb7185;
-  --line:rgba(150,160,255,.20);
-  --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
-}
+/* Shared tokens, glass, done-strike and scroll style come from packages/ui (/assets/). 3D-only tokens: */
+:root{--mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
   font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;
@@ -161,9 +156,6 @@ input.search:focus{border-color:var(--cyan);box-shadow:0 0 0 3px rgba(56,225,255
 .card .id{font-family:var(--mono);font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .card .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card .meta{display:flex;gap:6px;align-items:center}
-.card.done{opacity:.82}
-.card.done .t{color:var(--muted);text-decoration-line:line-through;text-decoration-thickness:2px;text-decoration-color:#c4b5fd;text-shadow:0 0 6px rgba(34,211,238,.45),0 0 2px rgba(167,139,250,.6)}
-.card.done .ic{border-color:var(--ok);background:rgba(62,230,168,.16);color:var(--ok);box-shadow:0 0 8px rgba(62,230,168,.4)}
 .card.run .ic{border-color:var(--cyan);box-shadow:0 0 10px var(--cyan);animation:pulse 1.8s ease-in-out infinite}
 .card.verify .ic,.card.review .ic{border-color:var(--pink);box-shadow:0 0 8px rgba(245,180,255,.6)}
 .card.bad{background:linear-gradient(90deg,rgba(251,113,133,.14),transparent 60%)}
