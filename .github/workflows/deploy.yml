@@ -44,6 +44,7 @@ jobs:
           for css in $(grep -oh '/assets/[A-Za-z0-9._-]*[.]css' _site/index.html _site/3d/index.html | sort -u); do
             test -s "_site$css" || { echo "::error::missing linked $css"; exit 1; }
           done
+          test -s _site/assets/crypto_gate.js || { echo "::error::missing /assets/crypto_gate.js"; exit 1; }
           test -s _site/data.enc && test -s _site/index.html
           touch _site/.nojekyll
           echo "sum=$(sha256sum _site/data.enc | cut -c1-64)" >> "$GITHUB_OUTPUT"
@@ -67,7 +68,9 @@ jobs:
           # push one empty commit (a new build version) and deploy again on it, once.
           for i in $(seq 1 "$TRIES"); do
             got=$(curl -fsS "$SITE/data.enc?t=$(date +%s%N)" | sha256sum | cut -c1-64) || got=none
-            if [ "$got" = "$SUM" ]; then echo "live after $i tries"; exit 0; fi
+            if [ "$got" = "$SUM" ]; then
+              curl -fsS -o /dev/null "$SITE/assets/crypto_gate.js" || { echo "::error::$SITE/assets/crypto_gate.js is not served"; exit 1; }
+              echo "live after $i tries"; exit 0; fi
             sleep "$WAIT"
           done
           if [ "$KICKED" = "1" ]; then

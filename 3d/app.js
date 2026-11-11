@@ -347,7 +347,7 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202611111537').then(mod => {
+      import('./scene.js?v=202611111624').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
