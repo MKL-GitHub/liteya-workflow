@@ -100,8 +100,8 @@ function buildPanels() {
   panel('live', 'bare', `<div class="live"><span class="dot" id="dot"></span><span id="liveText">подключение…</span><a class="sw" href="/" title="обычная версия">2D версия</a></div>`);
   panel('t1', 'tile c1', `${ico('done')}<div><b id="sDone">—</b><span>карточек готово<br>(все проекты)</span></div>`);
   panel('t2', 'tile c4', `${ico('runs')}<div><b id="sToday">—</b><span>запусков за сутки<br>(UTC)</span></div>`);
-  panel('t3', 'tile c5', `${ico('verify')}<div><b id="sVerify">—</b><span>на проверке</span></div>`);
-  panel('t4', 'tile c2', `${ico('work')}<div><b id="sWork">—</b><span>в работе</span></div>`);
+  panel('t3', 'tile c5', `${ico('verify')}<div title="Открытые PR карточек, ждущие вердикта или слияния; каждая один раз"><b id="sVerify">—</b><span>на проверке</span></div>`);
+  panel('t4', 'tile c2', `${ico('work')}<div title="Карточки с claim или живым помощником; каждая один раз"><b id="sWork">—</b><span>в работе</span></div>`);
   panel('ag', 'crew ag', `<h3>${ico('agents')}<span>Агенты</span><b id="cAgents">—</b><span class="st" id="cAgSt"></span></h3><div class="lst" id="cAgList"></div>`);
   panel('bt', 'crew bt', `<h3>${ico('bots')}<span>Боты</span><b id="cBots">—</b><span class="st" id="cBtSt"></span></h3><div class="lst" id="cBtList"></div>`);
   for (const l of [P.ag.el, P.bt.el].map(e => e.querySelector('.lst'))) // scroll the list, not the camera
@@ -347,7 +347,7 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202611091203').then(mod => {
+      import('./scene.js?v=202611111537').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
