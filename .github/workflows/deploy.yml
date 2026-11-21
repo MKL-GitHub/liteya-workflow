@@ -46,6 +46,22 @@ jobs:
           done
           test -s _site/assets/crypto_gate.js || { echo "::error::missing /assets/crypto_gate.js"; exit 1; }
           test -s _site/data.enc && test -s _site/index.html
+          # /assets/*.css links get a 12-hex sha256 of the file (never __V__)
+          python3 <<'PY'
+          import hashlib, pathlib, re
+          pat = re.compile(r'(/assets/([A-Za-z0-9._-]+[.]css))(\?v=[^"\s]*)?')
+          root = pathlib.Path("_site")
+          def repl(match: re.Match[str]) -> str:
+              file = root / "assets" / match.group(2)
+              if not file.is_file():
+                  return match.group(0)
+              digest = hashlib.sha256(file.read_bytes()).hexdigest()[:12]
+              return f"{match.group(1)}?v={digest}"
+          for rel in ("index.html", "3d/index.html"):
+              path = root / rel
+              if path.is_file():
+                  path.write_text(pat.sub(repl, path.read_text(encoding="utf-8")), encoding="utf-8")
+          PY
           touch _site/.nojekyll
           echo "sum=$(sha256sum _site/data.enc | cut -c1-64)" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-pages-artifact@v3

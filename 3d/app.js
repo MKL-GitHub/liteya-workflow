@@ -172,7 +172,8 @@ function renderTree() {
   const msHit = (p, m) => { if (!ql) return false; const b = msBadge(p, m); const name = (p === "nano" ? MS_HINT[m] || "" : "") + " " + (b ? b.label : "");
     return m.toLowerCase().startsWith(ql) || (ql.length >= 3 && name.toLowerCase().includes(ql)); };
   const anyMs = !!ql && state.cards.some(c => msHit(c.project, c.milestone));
-  const projects = [...new Set(state.cards.map(c => c.project))].sort((a, b) => a === "nano" ? -1 : b === "nano" ? 1 : a.localeCompare(b));
+  const order = state.project_order || ["system", "nano"], rank = p => { const i = order.indexOf(p); return i < 0 ? order.length : i; }; // priority: system, then nano (Mika 21.11)
+  const projects = [...new Set(state.cards.map(c => c.project))].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   let html = "";
   for (const p of projects) {
     let phtml = ""; const pc = state.cards.filter(c => c.project === p), filter = fOf(p);
@@ -347,7 +348,7 @@ function init() {
   const cssScene = new THREE.Scene(); for (const k in P) cssScene.add(P[k].obj);
   if (Q) {
     try {
-      import('./scene.js?v=202611111723').then(mod => {
+      import('./scene.js?v=202611210545').then(mod => {
         room = new mod.Room($("gl"), { quality: Q, reducedMotion: RM });
         room.addWindow('assets/window.jpg', 420, 537);
         room.setup(camera, W, H, dprFor(Q));
